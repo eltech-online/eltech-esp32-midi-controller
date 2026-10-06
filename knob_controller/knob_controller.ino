@@ -72,12 +72,23 @@ const int ENCODER_CC = 20;   // the encoder's own value, 0-127
 const int BUTTON_CC  = 21;   // the encoder's push button: 127 = on, 0 = off (it toggles)
 
 // ---- Knob range ----
-// Each knob is wired between 3.3 V and GND, so its middle pin gives 0-3300 mV.
-// The ESP32-C3's converter only measures accurately up to about 2500 mV, so
-// the last part of each knob's travel would do nothing. Setting "full" a
-// little below that makes the knob reach 127 before it gets there.
-const int KNOB_MIN_MV = 60;
-const int KNOB_MAX_MV = 2450;
+// The ESP32-C3's converter only measures accurately up to about 2500 mV. A
+// knob wired straight across 3.3 V would go past that, and the last quarter
+// of its travel would do nothing. So the four knobs share a "knob rail" that
+// is fed from 3.3 V through a 1 k resistor, which brings the top of the rail
+// down to about 2.4 V (the README shows the sum).
+//
+// The exact figure depends on your own knobs and resistor, so the sketch does
+// not guess it: the rail is also wired to multiplexer channel 15, and the
+// board MEASURES it. A knob's position is then its voltage as a fraction of
+// the rail's. Measuring against a reference like this is called a
+// "ratiometric" measurement, and it needs no calibration.
+#define REFERENCE_CHANNEL 15      // multiplexer channel wired to the knob rail
+const int KNOB_MIN_MV = 40;       // below this counts as fully down (0)
+const int KNOB_TOP_MARGIN_MV = 40;// this close to the rail counts as fully up (127)
+// The self-test fails a rail outside these: too high means the resistor is
+// missing, too low means the rail is not connected.
+const int RAIL_MIN_MV = 1800, RAIL_MAX_MV = 2600;
 
 // Turning the encoder the "wrong" way round? Change false to true.
 const bool ENC_REVERSE = false;
@@ -116,11 +127,18 @@ int readKnobMillivolts(int channel) {
 // What each knob last sent, and a smoothed copy of its voltage.
 int knobValue[KNOB_COUNT];        // 0-127, or -1 before the first reading
 float knobSmoothMv[KNOB_COUNT];
+float railMv = 2400;              // the knob rail's measured voltage, smoothed
 
 void sendControlChange(int control, int value);   // written further down
 
 // Reads every knob and sends a MIDI message for each one that moved.
 void readKnobs() {
+  // First the reference: how many millivolts is "fully up" right now? It
+  // hardly changes, so it is smoothed heavily (a tenth of the way each time).
+  railMv += (readKnobMillivolts(REFERENCE_CHANNEL) - railMv) * 0.1;
+  float topMv = railMv - KNOB_TOP_MARGIN_MV;
+  if (topMv < KNOB_MIN_MV + 127) topMv = KNOB_MIN_MV + 127;   // rail missing: avoid dividing by ~0
+
   for (int i = 0; i < KNOB_COUNT; i++) {
     int mv = readKnobMillivolts(i);
 
@@ -129,15 +147,15 @@ void readKnobs() {
     // through within a few readings.
     knobSmoothMv[i] += (mv - knobSmoothMv[i]) * 0.25;
 
-    // Scale the voltage to MIDI's 0-127 range.
-    int value = map((long)knobSmoothMv[i], KNOB_MIN_MV, KNOB_MAX_MV, 0, 127);
-    value = constrain(value, 0, 127);
+    // Scale the voltage to MIDI's 0-127 range: KNOB_MIN_MV is 0, the top of
+    // the rail is 127, and anything in between is in proportion.
+    float mvPerStep = (topMv - KNOB_MIN_MV) / 127.0;
+    int value = constrain((int)lround((knobSmoothMv[i] - KNOB_MIN_MV) / mvPerStep), 0, 127);
 
     // A knob resting exactly on the border between two values would flicker
     // between them forever. So a change of 1 is only accepted when the voltage
     // is clearly inside the new value's band (this is called "hysteresis").
-    float mvPerStep = (KNOB_MAX_MV - KNOB_MIN_MV) / 127.0;
-    float centreOfLast = KNOB_MIN_MV + (knobValue[i] + 0.5) * mvPerStep;
+    float centreOfLast = KNOB_MIN_MV + knobValue[i] * mvPerStep;
     bool movedEnough = fabs(knobSmoothMv[i] - centreOfLast) > mvPerStep * 0.8;
 
     if (knobValue[i] < 0 || (value != knobValue[i] && movedEnough)) {
@@ -314,11 +332,15 @@ void setup() {
     knobValue[i] = -1;             // -1 = "nothing sent yet", so the first reading is sent
     Serial.printf("Knob %d (C%d):  %4d mV (turn it and check the CC messages below)\n", i + 1, i, mv);
   }
+  // The knob rail CAN be tested: with the 1 k resistor in place it sits near 2.4 V.
+  railMv = readKnobMillivolts(REFERENCE_CHANNEL);
+  bool railOK = railMv >= RAIL_MIN_MV && railMv <= RAIL_MAX_MV;
+  Serial.printf("Knob rail:     %s (%d mV on C%d)\n", railOK ? "OK" : "BAD READING", (int)railMv, REFERENCE_CHANNEL);
   Serial.print("Encoder:       "); Serial.println(encoderOK ? "OK" : "NOT FOUND");
 
   startBluetoothMidi();
   Serial.println("Bluetooth:     advertising as \"" + String(DEVICE_NAME) + "\"");
-  Serial.print("RESULT:        "); Serial.println(encoderOK ? "PASS" : "FAIL");
+  Serial.print("RESULT:        "); Serial.println(encoderOK && railOK ? "PASS" : "FAIL");
 }
 
 void loop() {

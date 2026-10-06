@@ -4,7 +4,7 @@
 
 > **Status: BETA, not tested.** The code compiles for the ESP32-C3, but this kit has not been built and tested on real hardware yet. Pin choices, default values and the wiring may still change. Use it to read and learn from; expect to do some fault-finding if you build it now.
 
-A beginner-friendly **learning kit**: build a wireless music controller from an **ESP32-C3 SuperMini**, a **CD74HC4067 16-channel multiplexer**, four **10 kΩ potentiometers** and a **KY-040 rotary encoder**. It shows up on a phone, tablet or computer as a standard **Bluetooth MIDI** device, so its knobs can work the controls of any music app. No prior electronics or coding experience needed, and no soldering: everything plugs into a breadboard.
+A beginner-friendly **learning kit**: build a wireless music controller from an **ESP32-C3 SuperMini**, a **CD74HC4067 16-channel multiplexer**, four **10 kΩ potentiometers**, a **1 kΩ resistor** and a **KY-040 rotary encoder**. It shows up on a phone, tablet or computer as a standard **Bluetooth MIDI** device, so its knobs can work the controls of any music app. No prior electronics or coding experience needed, and no soldering: everything plugs into a breadboard.
 
 Designed, coded and documented by ElTech-Online in Callander, Scotland — the kit design, firmware and this guide are our own work.
 
@@ -21,6 +21,7 @@ Two techniques, one for getting more inputs and one for getting them out:
 
 Along the way you'll also pick up:
 
+- **Voltage dividers and ratiometric measurement** — one resistor fits the knobs to the ADC's range, and measuring against a reference removes the need to calibrate
 - **Smoothing and hysteresis** — stopping a knob that rests between two values from flickering
 - **Reading a rotary encoder** with an interrupt
 - **Following a published standard** (BLE-MIDI) so other people's software just works with your device
@@ -40,7 +41,15 @@ The code is written to be read: every section is commented in plain language, an
 | ... | | | | |
 | 15 | 1 | 1 | 1 | 1 |
 
-The sketch sets the four pins, waits a moment, reads the analog pin, and moves on to the next channel, a hundred times a second. Four knobs are in the kit; the other twelve channels are free for your own.
+The sketch sets the four pins, waits a moment, reads the analog pin, and moves on to the next channel, a hundred times a second. Four knobs are in the kit and one channel measures their supply; the other eleven channels are free for your own.
+
+**The resistor.** The ESP32-C3 can only measure accurately up to about 2.5 V. A knob wired straight across 3.3 V would go past that, and the last quarter of its travel would do nothing. So the knobs get their own supply, the **knob rail**, fed from 3.3 V through a 1 kΩ resistor. The four 10 kΩ knobs side by side behave like one 2.5 kΩ resistor, and the two form a voltage divider:
+
+```
+rail = 3.3 V × 2.5 kΩ / (1 kΩ + 2.5 kΩ) = about 2.36 V
+```
+
+Potentiometers are not precise parts (±20 %), so your rail may be anywhere from 2.2 to 2.5 V. The sketch doesn't guess: the rail is also wired to multiplexer channel `C15`, the board measures it, and each knob's position is its voltage as a fraction of the rail's. That is a **ratiometric** measurement, and it means the knobs need no calibration.
 
 **MIDI.** A knob on a MIDI controller sends a **Control Change** message: three numbers saying which channel (1 to 16), which control (0 to 127) and its new value (0 to 127). The message says nothing about what the control *does*: the app decides, usually with a "MIDI learn" button.
 
@@ -61,12 +70,13 @@ Knob 1 (C0):  1210 mV (turn it and check the CC messages below)
 Knob 2 (C1):   340 mV (turn it and check the CC messages below)
 Knob 3 (C2):  2280 mV (turn it and check the CC messages below)
 Knob 4 (C3):    60 mV (turn it and check the CC messages below)
+Knob rail:     OK (2362 mV on C15)
 Encoder:       OK
 Bluetooth:     advertising as "ElTech Knobs"
 RESULT:        PASS
 ```
 
-The knobs can only be read, not detected, so turn each one and watch its `CC` line change.
+The knobs can only be read, not detected, so turn each one and watch its `CC` line change. `Knob rail: BAD READING` with a figure near 2900 mV or more means the 1 kΩ resistor is missing or bypassed.
 
 There are **two sketches** in this repo:
 
@@ -82,14 +92,16 @@ There are **two sketches** in this repo:
 | ESP32-C3 SuperMini |  |
 | CD74HC4067 multiplexer breakout | `SIG`, `S0`–`S3`, `EN`, `VCC`, `GND` on one edge and `C0`–`C15` on the other |
 | 4 × 10 kΩ potentiometer (WH148 type) | 3 pins each. The middle one is the output |
+| 1 kΩ resistor | Brown, black, red, gold bands. It has no polarity: either way round |
 | KY-040 rotary encoder module | 5 pins: `CLK`, `DT`, `SW`, `+`, `GND` |
-| Breadboard + jumper wires | About 28 wires |
+| Breadboard + jumper wires | About 29 wires |
 
 ## Wiring
 
 | Wire | ESP32-C3 pin | Connects to |
 |---|---|---|
-| 3.3V | 3V3 | CD74HC4067 multiplexer `VCC`, Knob 1 `left pin`, Knob 2 `left pin`, Knob 3 `left pin`, Knob 4 `left pin`, KY-040 rotary encoder `+` |
+| 3.3V | 3V3 | CD74HC4067 multiplexer `VCC`, 1 k resistor `one leg`, KY-040 rotary encoder `+` |
+| Knob rail (about 2.4 V) | — | 1 k resistor `other leg`, Knob 1 `left pin`, Knob 2 `left pin`, Knob 3 `left pin`, Knob 4 `left pin`, CD74HC4067 multiplexer `C15` |
 | GND | GND | CD74HC4067 multiplexer `GND`, CD74HC4067 multiplexer `EN`, Knob 1 `right pin`, Knob 2 `right pin`, Knob 3 `right pin`, Knob 4 `right pin`, KY-040 rotary encoder `GND` |
 | Mux signal | GPIO 3 | CD74HC4067 multiplexer `SIG` |
 | Mux S0 | GPIO 4 | CD74HC4067 multiplexer `S0` |
@@ -110,7 +122,10 @@ The parts are drawn as simple blocks showing only the pins you connect. **Always
 
 Good to know:
 
-- **Everything runs on 3V3.** Use the breadboard's power rails: each knob needs 3V3 on one outer pin and GND on the other.
+- **Three rails.** 3V3 and GND go on the breadboard's power rails as usual. The **knob rail** is a third one: use the breadboard's other power strip, or one spare row.
+- **The resistor bridges 3V3 to the knob rail.** One leg in the 3V3 rail, the other in the knob rail. Nothing else connects the two.
+- **Each knob** has one outer pin on the knob rail and the other on GND. The knobs do **not** connect to 3V3 directly.
+- **C15 to the knob rail**, so the board can measure it.
 - **EN to GND** switches the multiplexer on. Left unconnected, it reads nothing.
 - **GPIO 3** is the analog pin. On the ESP32-C3 only GPIO 0–4 can read analog voltages.
 - **A knob works backwards?** Swap the wires on its two outer pins.
@@ -182,7 +197,7 @@ Open `knob_controller/knob_controller.ino` alongside this section. The file star
 
 1. **Settings at the top.** Pins, the device name, the MIDI channel and each knob's control number are named values you can change in one place.
 2. **Choosing a channel.** `selectMuxChannel()` writes the channel number to the four select pins, one binary digit each.
-3. **Reading the knobs.** `readKnobs()` smooths each voltage, scales it to 0–127, and sends a message only when the value has really changed.
+3. **Reading the knobs.** `readKnobs()` first measures the knob rail on channel 15, then smooths each knob's voltage, scales it to 0–127 as a fraction of the rail, and sends a message only when the value has really changed.
 4. **Bluetooth.** `startBluetoothMidi()` creates the MIDI service and characteristic and starts advertising.
 5. **Sending a message.** `sendControlChange()` builds the 5-byte BLE-MIDI packet. The comment above it explains each byte.
 6. **The encoder.** `encoderTurned()` is the interrupt that counts clicks; `readEncoder()` turns them into a value and handles the button.
@@ -193,7 +208,7 @@ Small changes to try yourself, roughly easiest first. Change one thing, upload, 
 
 1. **Change what the knobs control.** Edit the numbers in `KNOB_CC`.
 2. **Rename the device.** Edit `DEVICE_NAME`.
-3. **Add more knobs.** Wire a fifth potentiometer to `C4`, raise `KNOB_COUNT` to 5 and add its control number.
+3. **Add more knobs.** Wire a fifth potentiometer to `C4` (outer pins to the knob rail and GND), raise `KNOB_COUNT` to 5 and add its control number. The rail drops a little with each knob you add, and the sketch allows for it by itself.
 4. **Make the encoder send notes.** Send Note On (`0x90`) and Note Off (`0x80`) messages instead of a Control Change, and play a scale by turning it.
 5. **Add a second page of controls.** Let the encoder's button switch the four knobs between two sets of control numbers.
 6. **Add a slider or a light sensor** on a spare channel: anything that gives a voltage can be a MIDI control.
@@ -203,7 +218,7 @@ Small changes to try yourself, roughly easiest first. Change one thing, upload, 
 This repository is published early. Still to be confirmed on real hardware:
 
 - Bluetooth MIDI on the ESP32-C3 with iOS, macOS, Windows and Android (some systems want the device to be paired/bonded first)
-- The top of each knob's travel: the ESP32-C3's ADC flattens above about 2.5 V, so `KNOB_MAX_MV` may need adjusting
+- The knob rail's real voltage with the kit's own potentiometers and 1 kΩ resistor (expected 2.2 to 2.5 V), and whether each knob reaches both 0 and 127
 - Whether the WH148 potentiometers' legs sit firmly in a breadboard
 - The power-on check for the encoder assumes the module has pull-up resistors on CLK and DT
 

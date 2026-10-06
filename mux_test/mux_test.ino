@@ -9,8 +9,11 @@
 //
 // Wiring: as in the full project (see the wiring diagram in the README).
 //
-// What you should see: four numbers, each going from near 0 to about 3000 as
-// you turn that knob. If two numbers move together, two wires are swapped.
+// What you should see: four numbers, each going from near 0 up to the "rail"
+// number as you turn that knob. The rail (channel 15) is the knobs' supply
+// after the 1 k resistor and should read about 2400. If it reads 2900 or more
+// the resistor is missing; if two knob numbers move together, two wires are
+// swapped.
 
 #define MUX_S0  4
 #define MUX_S1  5
@@ -52,6 +55,9 @@ void loop() {
     Serial.print(millivolts);
     Serial.print(" mV   ");
   }
-  Serial.println();   // end the line
+  selectMuxChannel(15);
+  Serial.print("rail C15: ");
+  Serial.print(analogReadMilliVolts(MUX_SIG));
+  Serial.println(" mV");   // println ends the line
   delay(500);         // wait half a second, then loop() runs again
 }
