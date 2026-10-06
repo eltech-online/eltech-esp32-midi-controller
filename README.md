@@ -94,7 +94,7 @@ There are **two sketches** in this repo:
 | 4 × 10 kΩ potentiometer (WH148 type) | 3 pins each. The middle one is the output |
 | 1 kΩ resistor | Brown, black, red, gold bands. It has no polarity: either way round |
 | KY-040 rotary encoder module | 5 pins: `CLK`, `DT`, `SW`, `+`, `GND` |
-| Breadboard + jumper wires | About 29 wires |
+| Breadboard + jumper wires | 27 wires |
 
 ## Wiring
 
