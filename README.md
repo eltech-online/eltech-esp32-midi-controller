@@ -100,8 +100,8 @@ There are **two sketches** in this repo:
 
 | Wire | ESP32-C3 pin | Connects to |
 |---|---|---|
-| 3.3V | 3V3 | CD74HC4067 multiplexer `VCC`, 1 k resistor `one leg`, KY-040 rotary encoder `+` |
-| Knob rail (about 2.4 V) | — | 1 k resistor `other leg`, Knob 1 `left pin`, Knob 2 `left pin`, Knob 3 `left pin`, Knob 4 `left pin`, CD74HC4067 multiplexer `C15` |
+| 3.3V | 3V3 | CD74HC4067 multiplexer `VCC`, 1 kΩ resistor `one leg`, KY-040 rotary encoder `+` |
+| Knob rail (about 2.4 V) | — | 1 kΩ resistor `other leg`, Knob 1 `left pin`, Knob 2 `left pin`, Knob 3 `left pin`, Knob 4 `left pin`, CD74HC4067 multiplexer `C15` |
 | GND | GND | CD74HC4067 multiplexer `GND`, CD74HC4067 multiplexer `EN`, Knob 1 `right pin`, Knob 2 `right pin`, Knob 3 `right pin`, Knob 4 `right pin`, KY-040 rotary encoder `GND` |
 | Mux signal | GPIO 3 | CD74HC4067 multiplexer `SIG` |
 | Mux S0 | GPIO 4 | CD74HC4067 multiplexer `S0` |
